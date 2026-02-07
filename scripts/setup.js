@@ -13,20 +13,20 @@ async function setupNeo4j() {
     try {
         // Create constraints
         await session.run(`
-      CREATE CONSTRAINT flight_number IF NOT EXISTS
-      FOR (f:Flight) REQUIRE f.flightNumber IS UNIQUE
+    CREATE CONSTRAINT flight_number IF NOT EXISTS
+    FOR (f:Flight) REQUIRE f.flightNumber IS UNIQUE
     `);
 
         await session.run(`
-      CREATE CONSTRAINT gate_number IF NOT EXISTS
-      FOR (g:Gate) REQUIRE g.gateNumber IS UNIQUE
+    CREATE CONSTRAINT gate_number IF NOT EXISTS
+    FOR (g:Gate) REQUIRE g.gateNumber IS UNIQUE
     `);
 
         // Create sample terminals
         await session.run(`
-      MERGE (t1:Terminal {terminalName: 'Terminal 1'})
-      MERGE (t2:Terminal {terminalName: 'Terminal 2'})
-      MERGE (t3:Terminal {terminalName: 'Terminal 3'})
+    MERGE (t1:Terminal {terminalName: 'Terminal 1'})
+    MERGE (t2:Terminal {terminalName: 'Terminal 2'})
+    MERGE (t3:Terminal {terminalName: 'Terminal 3'})
     `);
 
         // Create sample gates
@@ -45,31 +45,31 @@ async function setupNeo4j() {
         WITH g
         MATCH (t:Terminal {terminalName: $terminal})
         MERGE (g)-[:BELONGS_TO]->(t)
-      `, { gate, terminal });
+    `, { gate, terminal });
         }
 
         // Create airport zones
         await session.run(`
-      MERGE (a:Airport {
+    MERGE (a:Airport {
         name: 'Frankfurt Airport',
         icao: 'EDDF',
         latitude: 50.0379,
         longitude: 8.5622
-      })
-      MERGE (z1:Zone {
+    })
+    MERGE (z1:Zone {
         name: 'Approach Zone',
         latitude: 50.0379,
         longitude: 8.5622,
         radiusMeters: 10000
-      })
-      MERGE (z2:Zone {
+    })
+    MERGE (z2:Zone {
         name: 'Terminal Zone',
         latitude: 50.0379,
         longitude: 8.5622,
         radiusMeters: 2000
-      })
-      MERGE (a)-[:HAS_ZONE]->(z1)
-      MERGE (a)-[:HAS_ZONE]->(z2)
+    })
+    MERGE (a)-[:HAS_ZONE]->(z1)
+    MERGE (a)-[:HAS_ZONE]->(z2)
     `);
 
         console.log('✅ Neo4j schema created successfully');

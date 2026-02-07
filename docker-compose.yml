@@ -54,7 +54,7 @@ services:
     volumes:
       - neo4j-data:/data
       - neo4j-logs:/logs
-      - ./init-neo4j.cypher:/var/lib/neo4j/import/init.cypher:ro
+      - ./init-neo4j.cypher:/var/lib/neo4j/import/init.cypher
     networks:
       - airport-network
     healthcheck:
@@ -80,7 +80,7 @@ services:
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: airport123
-      AVIATIONSTACK_API_KEY: ${AVIATIONSTACK_API_KEY}
+      AVIATIONSTACK_API_KEY: "092b17d666101412d308e4d02a08bbf0"
     depends_on:
       redis:
         condition: service_healthy
