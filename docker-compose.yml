@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Redis - Real-time data store
+  redis:
+    image: redis:7-alpine
+    container_name: airport-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - airport-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # MongoDB - Document database for schedules and history
+  mongodb:
+    image: mongo:7
+    container_name: airport-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: airport123
+      MONGO_INITDB_DATABASE: airport_system
+    volumes:
+      - mongodb-data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - airport-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Neo4j - Graph database for relationships
+  neo4j:
+    image: neo4j:5
+    container_name: airport-neo4j
+    ports:
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
+    environment:
+      NEO4J_AUTH: neo4j/airport123
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_dbms_memory_heap_max__size: 512M
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - ./init-neo4j.cypher:/var/lib/neo4j/import/init.cypher:ro
+    networks:
+      - airport-network
+    healthcheck:
+      test: [ "CMD", "cypher-shell", "-u", "neo4j", "-p", "airport123", "RETURN 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API Server
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: airport-backend
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MONGODB_URI: mongodb://admin:airport123@mongodb:27017/airport_system?authSource=admin
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: airport123
+      AVIATIONSTACK_API_KEY: ${AVIATIONSTACK_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+    networks:
+      - airport-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  mongodb-data:
+  neo4j-data:
+  neo4j-logs:
+
+
+networks:
+  airport-network:
+    driver: bridge
