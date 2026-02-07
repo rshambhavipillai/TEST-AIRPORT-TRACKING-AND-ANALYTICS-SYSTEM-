@@ -16,6 +16,15 @@ router.get('/', async (req, res) => {
     }
 });
 
+router.get('/check', async (req, res) => {
+    try {
+        const alerts = await collisionService.checkCollisionRisks();
+        res.json({ success: true, count: alerts.length, data: alerts });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 router.get('/history', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 50;

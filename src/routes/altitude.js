@@ -16,6 +16,15 @@ router.get('/', async (req, res) => {
     }
 });
 
+router.get('/check', async (req, res) => {
+    try {
+        const alerts = await altitudeCheckService.checkAltitudeViolations();
+        res.json({ success: true, count: alerts.length, data: alerts });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 router.get('/aircraft/:callsign', async (req, res) => {
     try {
         const { callsign } = req.params;

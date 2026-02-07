@@ -77,8 +77,8 @@ app.get('/health', async (req, res) => {
 // API Routes
 app.use('/api/flights', flightMonitorRoutes);
 app.use('/api/kpi', kpiRoutes);
-app.use('/api/alerts/collision', collisionRoutes);
-app.use('/api/alerts/altitude', altitudeRoutes);
+app.use('/api/collision', collisionRoutes);
+app.use('/api/altitude', altitudeRoutes);
 app.use('/api/passenger', passengerRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/replay', replayRoutes);
@@ -95,6 +95,14 @@ res.sendFile(path.join(__dirname, 'public', 'index.html'));
 
 app.get('/kpi', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'kpi.html'));
+});
+
+app.get('/collision', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'collision.html'));
+});
+
+app.get('/altitude', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'altitude.html'));
 });
 
 app.get('/passenger', (req, res) => {
