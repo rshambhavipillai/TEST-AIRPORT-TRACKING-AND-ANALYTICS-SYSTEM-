@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Replay - Airport Tracking System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 Flight Replay</h1>
+            <p class="subtitle">Replay Historical Flight Paths</p>
+        </header>
+
+        <main>
+            <div class="dashboard-header">
+                <a href="/" class="btn">← Back to Home</a>
+            </div>
+
+            <div class="info-section">
+                <h2>Available Flights for Replay</h2>
+                <div class="flights-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Flight Number</th>
+                                <th>Date</th>
+                                <th>Data Points</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="flights-list">
+                            <tr>
+                                <td colspan="4">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="replay-section" style="display: none;">
+                <div class="info-section">
+                    <h2>Flight Path Replay</h2>
+                    <div id="replay-info"
+                        style="padding: 20px; background: #f8f9fa; border-radius: 10px; margin-bottom: 20px;">
+                        <h3 id="replay-flight">-</h3>
+                        <p><strong>Date:</strong> <span id="replay-date">-</span></p>
+                        <p><strong>Total Points:</strong> <span id="replay-points">-</span></p>
+                        <p><strong>Duration:</strong> <span id="replay-duration">-</span></p>
+                    </div>
+
+                    <div style="text-align: center; padding: 20px;">
+                        <p style="font-size: 1.2em; color: #667eea;">
+                            🗺️ Flight path visualization would appear here
+                        </p>
+                        <p style="color: #666; margin-top: 10px;">
+                            (Map integration with Leaflet.js or similar library)
+                        </p>
+                    </div>
+
+                    <div class="architecture-info">
+                        <div class="arch-item">
+                            <h4>Max Altitude</h4>
+                            <p id="max-altitude">- ft</p>
+                        </div>
+                        <div class="arch-item">
+                            <h4>Avg Speed</h4>
+                            <p id="avg-speed">- kts</p>
+                        </div>
+                        <div class="arch-item">
+                            <h4>Max Speed</h4>
+                            <p id="max-speed">- kts</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        async function loadAvailableFlights() {
+            try {
+                const response = await fetch('/api/replay/flights');
+                const result = await response.json();
+
+                const tbody = document.getElementById('flights-list');
+                if (result.success && result.data.length > 0) {
+                    tbody.innerHTML = result.data.map(f => `
+                        <tr>
+                            <td>${f.flightNumber}</td>
+                            <td>${f.date}</td>
+                            <td>${f.pointCount}</td>
+                            <td><button class="btn" onclick="loadReplay('${f.flightNumber}', '${f.date}')">▶️ Replay</button></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="4">No replay data available. Run seed script to add sample telemetry data.</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error loading flights:', error);
+                document.getElementById('flights-list').innerHTML =
+                    '<tr><td colspan="4">Error loading data. Make sure the server is running.</td></tr>';
+            }
+        }
+
+        async function loadReplay(flightNumber, date) {
+            try {
+                // Load telemetry
+                const telemetryRes = await fetch(`/api/replay/${flightNumber}/${date}`);
+                const telemetry = await telemetryRes.json();
+
+                if (telemetry.success) {
+                    document.getElementById('replay-flight').textContent = `Flight ${telemetry.data.flightNumber}`;
+                    document.getElementById('replay-date').textContent = telemetry.data.date;
+                    document.getElementById('replay-points').textContent = telemetry.data.totalPoints;
+
+                    const duration = telemetry.data.duration;
+                    document.getElementById('replay-duration').textContent =
+                        `${duration.hours}h ${duration.minutes}m ${duration.seconds}s`;
+                }
+
+                // Load summary
+                const summaryRes = await fetch(`/api/replay/${flightNumber}/${date}/summary`);
+                const summary = await summaryRes.json();
+
+                if (summary.success) {
+                    document.getElementById('max-altitude').textContent = summary.data.statistics.maxAltitude + ' ft';
+                    document.getElementById('avg-speed').textContent = summary.data.statistics.averageSpeed + ' kts';
+                    document.getElementById('max-speed').textContent = summary.data.statistics.maxSpeed + ' kts';
+                }
+
+                document.getElementById('replay-section').style.display = 'block';
+                document.getElementById('replay-section').scrollIntoView({ behavior: 'smooth' });
+            } catch (error) {
+                console.error('Error loading replay:', error);
+                alert('Error loading replay data');
+            }
+        }
+
+        // Load on page load
+        loadAvailableFlights();
+    </script>
+</body>
+
+</html>
