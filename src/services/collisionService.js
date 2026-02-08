@@ -77,14 +77,19 @@ class CollisionDetectionService {
                     const alert = this.checkPairCollision(positions[i], positions[j]);
                     if (alert) {
                         alerts.push(alert);
-                        // Store alert in Redis
-                        await this.storeAlert(alert);
+                        // Store critical and warning alerts in Redis
+                        if (alert.severity === 'CRITICAL' || alert.severity === 'WARNING') {
+                            await this.storeAlert(alert);
+                        }
                     }
                 }
             }
 
-            if (alerts.length > 0) {
-                console.log(`⚠️  ${alerts.length} collision risk(s) detected!`);
+            const criticalCount = alerts.filter(a => a.severity === 'CRITICAL').length;
+            const warningCount = alerts.filter(a => a.severity === 'WARNING').length;
+
+            if (criticalCount > 0 || warningCount > 0) {
+                console.log(`⚠️  ${criticalCount} critical, ${warningCount} warning collision risk(s) detected!`);
             }
 
             return alerts;
@@ -109,34 +114,38 @@ class CollisionDetectionService {
         // Calculate altitude difference
         const altitudeDiff = Math.abs(aircraft1.altitude - aircraft2.altitude);
 
-        // Check if unsafe
-        if (distance < this.SAFE_DISTANCE_KM && altitudeDiff < this.SAFE_ALTITUDE_DIFF_FT) {
-            const severity = this.calculateSeverity(distance, altitudeDiff);
-
-            return {
-                id: `${aircraft1.callsign}-${aircraft2.callsign}-${Date.now()}`,
-                aircraft1: aircraft1.callsign,
-                aircraft2: aircraft2.callsign,
-                distance: parseFloat(distance.toFixed(2)),
-                altitudeDiff: Math.round(altitudeDiff),
-                severity: severity,
-                positions: {
-                    aircraft1: {
-                        latitude: aircraft1.latitude,
-                        longitude: aircraft1.longitude,
-                        altitude: aircraft1.altitude
-                    },
-                    aircraft2: {
-                        latitude: aircraft2.latitude,
-                        longitude: aircraft2.longitude,
-                        altitude: aircraft2.altitude
-                    }
-                },
-                timestamp: new Date().toISOString()
-            };
+        // Determine severity based on distance and altitude
+        let severity = 'SAFE';
+        if (distance < 5 && altitudeDiff < this.SAFE_ALTITUDE_DIFF_FT) {
+            severity = 'CRITICAL';
+        } else if (distance < 10 && altitudeDiff < this.SAFE_ALTITUDE_DIFF_FT) {
+            severity = 'WARNING';
         }
 
-        return null;
+        // Return data for ALL pairs (including safe ones) so frontend can count them
+        return {
+            id: `${aircraft1.callsign}-${aircraft2.callsign}-${Date.now()}`,
+            flight1: {
+                callsign: aircraft1.callsign,
+                latitude: aircraft1.latitude,
+                longitude: aircraft1.longitude,
+                altitude: aircraft1.altitude,
+                velocity: aircraft1.velocity,
+                heading: aircraft1.heading
+            },
+            flight2: {
+                callsign: aircraft2.callsign,
+                latitude: aircraft2.latitude,
+                longitude: aircraft2.longitude,
+                altitude: aircraft2.altitude,
+                velocity: aircraft2.velocity,
+                heading: aircraft2.heading
+            },
+            distance: parseFloat(distance.toFixed(2)),
+            altitudeDiff: Math.round(altitudeDiff),
+            severity: severity,
+            timestamp: new Date().toISOString()
+        };
     }
 
     /**

@@ -42,7 +42,7 @@ class AltitudeCheckService {
     }
 
     /**
-     * Check for low-altitude aircraft
+     * Check for low-altitude aircraft and return all monitored aircraft
      */
     async checkLowAltitudeAircraft() {
         try {
@@ -51,6 +51,7 @@ class AltitudeCheckService {
             // Get all aircraft positions
             const keys = await redis.keys('aircraft:*:position');
             const lowAltitudeAlerts = [];
+            const allAircraft = [];
 
             for (const key of keys) {
                 const data = await redis.hGetAll(key);
@@ -63,38 +64,162 @@ class AltitudeCheckService {
                 const altitude = parseFloat(data.altitude);
                 const latitude = parseFloat(data.latitude);
                 const longitude = parseFloat(data.longitude);
+                const velocity = parseFloat(data.velocity) || 0;
+                const heading = parseFloat(data.heading) || 0;
+
+                // Check if aircraft is in airport zone
+                const airportZoneInfo = await this.getAirportZoneInfo(latitude, longitude);
+
+                // Build aircraft info
+                const aircraftInfo = {
+                    callsign,
+                    altitude,
+                    latitude,
+                    longitude,
+                    velocity,
+                    heading,
+                    inAirportZone: airportZoneInfo.inZone,
+                    airportName: airportZoneInfo.airportName,
+                    zoneName: airportZoneInfo.zoneName,
+                    distanceToAirport: airportZoneInfo.distance
+                };
+
+                allAircraft.push(aircraftInfo);
 
                 // Check if altitude is below threshold
                 if (altitude < this.MIN_SAFE_ALTITUDE_FT) {
-                    // Check if aircraft is in airport zone
-                    const inAirportZone = await this.isInAirportZone(latitude, longitude);
-
                     // If NOT in airport zone, create alert
-                    if (!inAirportZone) {
+                    if (!airportZoneInfo.inZone) {
                         const alert = {
                             id: `${callsign}-${Date.now()}`,
                             callsign,
                             altitude,
-                            position: { latitude, longitude },
+                            latitude,
+                            longitude,
+                            velocity,
+                            heading,
                             severity: this.calculateSeverity(altitude),
                             message: 'Aircraft flying below safe altitude outside airport zone',
+                            inAirportZone: false,
+                            airportName: null,
+                            zoneName: null,
+                            distanceToAirport: airportZoneInfo.distance,
                             timestamp: new Date().toISOString()
                         };
 
                         lowAltitudeAlerts.push(alert);
                         await this.storeAlert(alert);
+                    } else {
+                        // Aircraft is low but in airport zone - still track it
+                        const alert = {
+                            id: `${callsign}-${Date.now()}`,
+                            callsign,
+                            altitude,
+                            latitude,
+                            longitude,
+                            velocity,
+                            heading,
+                            severity: 'SAFE',
+                            message: `Aircraft in ${airportZoneInfo.airportName} ${airportZoneInfo.zoneName} - Normal operations`,
+                            inAirportZone: true,
+                            airportName: airportZoneInfo.airportName,
+                            zoneName: airportZoneInfo.zoneName,
+                            distanceToAirport: airportZoneInfo.distance,
+                            timestamp: new Date().toISOString()
+                        };
+                        lowAltitudeAlerts.push(alert);
                     }
                 }
             }
 
-            if (lowAltitudeAlerts.length > 0) {
-                console.log(`📉 ${lowAltitudeAlerts.length} low-altitude alert(s) detected!`);
+            if (lowAltitudeAlerts.filter(a => a.severity !== 'SAFE').length > 0) {
+                console.log(`📉 ${lowAltitudeAlerts.filter(a => a.severity !== 'SAFE').length} low-altitude alert(s) detected!`);
             }
 
-            return lowAltitudeAlerts;
+            return {
+                alerts: lowAltitudeAlerts,
+                totalAircraft: allAircraft.length,
+                monitoredAircraft: allAircraft
+            };
         } catch (error) {
             console.error('Error checking low-altitude aircraft:', error);
-            return [];
+            return { alerts: [], totalAircraft: 0, monitoredAircraft: [] };
+        }
+    }
+
+    /**
+     * Get detailed airport zone information
+     */
+    async getAirportZoneInfo(latitude, longitude) {
+        try {
+            const driver = dbManager.getNeo4j();
+            const session = driver.session();
+
+            const result = await session.run(`
+        MATCH (a:Airport)-[:HAS_ZONE]->(z:Zone)
+        WITH a, z, point.distance(
+          point({latitude: $lat, longitude: $lon}),
+          point({latitude: z.latitude, longitude: z.longitude})
+        ) as distance
+        WHERE distance < z.radiusMeters
+        RETURN a.name as airport, a.code as airportCode, z.name as zone,
+               distance / 1000 as distanceKm
+        ORDER BY distance
+        LIMIT 1
+      `, { lat: latitude, lon: longitude });
+
+            await session.close();
+
+            if (result.records.length > 0) {
+                const record = result.records[0];
+                return {
+                    inZone: true,
+                    airportName: record.get('airport'),
+                    airportCode: record.get('airportCode'),
+                    zoneName: record.get('zone'),
+                    distance: parseFloat(record.get('distanceKm').toFixed(2))
+                };
+            }
+
+            // Not in any zone, find nearest airport
+            const nearestResult = await session.run(`
+        MATCH (a:Airport)
+        WITH a, point.distance(
+          point({latitude: $lat, longitude: $lon}),
+          point({latitude: a.latitude, longitude: a.longitude})
+        ) as distance
+        RETURN a.name as airport, a.code as airportCode, distance / 1000 as distanceKm
+        ORDER BY distance
+        LIMIT 1
+      `, { lat: latitude, lon: longitude });
+
+            if (nearestResult.records.length > 0) {
+                const record = nearestResult.records[0];
+                return {
+                    inZone: false,
+                    airportName: record.get('airport'),
+                    airportCode: record.get('airportCode'),
+                    zoneName: null,
+                    distance: parseFloat(record.get('distanceKm').toFixed(2))
+                };
+            }
+
+            return {
+                inZone: false,
+                airportName: null,
+                airportCode: null,
+                zoneName: null,
+                distance: null
+            };
+        } catch (error) {
+            console.error('Error getting airport zone info:', error);
+            return {
+                inZone: false,
+                airportName: null,
+                airportCode: null,
+                zoneName: null,
+                distance: null
+            };
         }
     }
 
@@ -102,27 +227,8 @@ class AltitudeCheckService {
      * Check if coordinates are within airport zone using Neo4j
      */
     async isInAirportZone(latitude, longitude) {
-        try {
-            const driver = dbManager.getNeo4j();
-            const session = driver.session();
-
-            const result = await session.run(`
-        MATCH (a:Airport)-[:HAS_ZONE]->(z:Zone)
-        WHERE point.distance(
-          point({latitude: $lat, longitude: $lon}),
-          point({latitude: z.latitude, longitude: z.longitude})
-        ) < z.radiusMeters
-        RETURN a.name as airport, z.name as zone
-      `, { lat: latitude, lon: longitude });
-
-            await session.close();
-
-            return result.records.length > 0;
-        } catch (error) {
-            console.error('Error checking airport zone:', error);
-            // Fallback to simple distance check
-            return apiClient.isInAirportZone(latitude, longitude);
-        }
+        const info = await this.getAirportZoneInfo(latitude, longitude);
+        return info.inZone;
     }
 
     /**
@@ -159,18 +265,23 @@ class AltitudeCheckService {
     }
 
     /**
-     * Get active altitude alerts
+     * Get active altitude alerts with full monitoring data
      */
     async getActiveAlerts() {
         try {
-            const redis = dbManager.getRedis();
-            const alerts = await redis.lRange('alerts:altitude:active', 0, -1);
-
-            return alerts.map(a => JSON.parse(a));
+            const result = await this.checkLowAltitudeAircraft();
+            return result;
         } catch (error) {
             console.error('Error getting active altitude alerts:', error);
-            return [];
+            return { alerts: [], totalAircraft: 0, monitoredAircraft: [] };
         }
+    }
+
+    /**
+     * Check all altitude violations (for API endpoint)
+     */
+    async checkAltitudeViolations() {
+        return await this.checkLowAltitudeAircraft();
     }
 
     /**

@@ -249,6 +249,13 @@
             </div>
 
             <div class="info-section">
+                <h2>📊 All Monitored Aircraft</h2>
+                <div id="monitored-aircraft-container">
+                    <p style="text-align: center; color: #666;">Loading aircraft data...</p>
+                </div>
+            </div>
+
+            <div class="info-section">
                 <h2>Altitude Reference Guide</h2>
                 <div class="altitude-gauge">
                     <div class="gauge-marker" style="bottom: 80%;">
@@ -276,35 +283,38 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    const alerts = data.data;
+                    const result = data.data;
+                    const alerts = result.alerts || [];
+                    const totalAircraft = result.totalAircraft || 0;
 
                     // Update statistics
                     const critical = alerts.filter(a => a.severity === 'CRITICAL').length;
-                    const warning = alerts.filter(a => a.severity === 'WARNING').length;
+                    const high = alerts.filter(a => a.severity === 'HIGH').length;
+                    const medium = alerts.filter(a => a.severity === 'MEDIUM').length;
                     const safe = alerts.filter(a => a.severity === 'SAFE').length;
 
-                    document.getElementById('total-monitored').textContent = alerts.length;
+                    document.getElementById('total-monitored').textContent = totalAircraft;
                     document.getElementById('critical-alerts').textContent = critical;
-                    document.getElementById('warning-alerts').textContent = warning;
-                    document.getElementById('safe-aircraft').textContent = safe;
+                    document.getElementById('warning-alerts').textContent = high + medium;
+                    document.getElementById('safe-aircraft').textContent = totalAircraft - critical - high - medium;
 
                     // Display alerts
                     const container = document.getElementById('alerts-container');
 
-                    // Filter to show only critical and warning alerts
-                    const activeAlerts = alerts.filter(a => a.severity !== 'SAFE');
-
-                    if (activeAlerts.length === 0) {
+                    // Show all alerts (including SAFE ones in airport zones)
+                    if (alerts.length === 0) {
                         container.innerHTML = '<div class="no-alerts">✅ All aircraft maintaining safe altitude. No violations detected.</div>';
                     } else {
-                        container.innerHTML = activeAlerts.map(alert => {
+                        container.innerHTML = alerts.map(alert => {
                             const altitudeFt = Math.round(alert.altitude);
                             const isCritical = alert.severity === 'CRITICAL';
+                            const isHigh = alert.severity === 'HIGH';
+                            const isSafe = alert.severity === 'SAFE';
 
                             return `
                             <div class="altitude-alert ${alert.severity.toLowerCase()}">
                                 <div class="alert-header">
-                                    <h3>${isCritical ? '🚨' : '⚠️'} Low Altitude Alert</h3>
+                                    <h3>${isCritical ? '🚨' : isSafe ? '✅' : '⚠️'} ${isSafe ? 'Aircraft in Airport Zone' : 'Low Altitude Alert'}</h3>
                                     <span class="alert-severity severity-${alert.severity.toLowerCase()}">
                                         ${alert.severity}
                                     </span>
@@ -317,21 +327,54 @@
                                     </div>
                                     <div class="detail-card">
                                         <div class="detail-label">Current Altitude</div>
-                                        <div class="detail-value" style="color: ${isCritical ? '#ff4444' : '#ffaa00'}">
+                                        <div class="detail-value" style="color: ${isCritical ? '#ff4444' : isHigh ? '#ffaa00' : isSafe ? '#00cc66' : '#ff8800'}">
                                             ${altitudeFt} ft
                                         </div>
                                     </div>
                                     <div class="detail-card">
                                         <div class="detail-label">Speed</div>
-                                        <div class="detail-value">${Math.round(alert.velocity)} kts</div>
+                                        <div class="detail-value">${Math.round(alert.velocity || 0)} kts</div>
                                     </div>
                                     <div class="detail-card">
-                                        <div class="detail-label">Threshold</div>
-                                        <div class="detail-value">
-                                            ${isCritical ? '< 1,000 ft' : '1,000-3,000 ft'}
+                                        <div class="detail-label">Heading</div>
+                                        <div class="detail-value">${Math.round(alert.heading || 0)}°</div>
+                                    </div>
+                                </div>
+
+                                ${alert.inAirportZone ? `
+                                <div style="margin: 15px 0; padding: 15px; background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); border-radius: 8px; border-left: 4px solid #4caf50;">
+                                    <h4 style="margin: 0 0 10px 0; color: #2e7d32;">🛬 Airport Zone Information</h4>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                                        <div>
+                                            <strong>Airport:</strong> ${alert.airportName || 'Unknown'}
+                                        </div>
+                                        <div>
+                                            <strong>Zone:</strong> ${alert.zoneName || 'N/A'}
+                                        </div>
+                                        <div>
+                                            <strong>Distance:</strong> ${alert.distanceToAirport ? alert.distanceToAirport.toFixed(2) + ' km' : 'N/A'}
+                                        </div>
+                                        <div>
+                                            <strong>Status:</strong> <span style="color: #4caf50;">✓ Normal Operations</span>
                                         </div>
                                     </div>
                                 </div>
+                                ` : alert.distanceToAirport ? `
+                                <div style="margin: 15px 0; padding: 15px; background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); border-radius: 8px; border-left: 4px solid #ff9800;">
+                                    <h4 style="margin: 0 0 10px 0; color: #e65100;">📍 Location Information</h4>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                                        <div>
+                                            <strong>Nearest Airport:</strong> ${alert.airportName || 'Unknown'}
+                                        </div>
+                                        <div>
+                                            <strong>Distance:</strong> ${alert.distanceToAirport.toFixed(2)} km
+                                        </div>
+                                        <div>
+                                            <strong>Status:</strong> <span style="color: #ff9800;">⚠ Outside Airport Zone</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
 
                                 <div class="flight-info-grid">
                                     <div class="info-item">
@@ -343,38 +386,92 @@
                                         <strong>${alert.longitude.toFixed(4)}°</strong>
                                     </div>
                                     <div class="info-item">
-                                        <span>Vertical Rate:</span>
-                                        <strong>${alert.verticalRate ? Math.round(alert.verticalRate) + ' ft/min' : 'N/A'}</strong>
+                                        <span>In Airport Zone:</span>
+                                        <strong>${alert.inAirportZone ? '✓ Yes' : '✗ No'}</strong>
                                     </div>
                                     <div class="info-item">
-                                        <span>On Ground:</span>
-                                        <strong>${alert.onGround ? 'Yes' : 'No'}</strong>
+                                        <span>Timestamp:</span>
+                                        <strong>${new Date(alert.timestamp).toLocaleTimeString()}</strong>
                                     </div>
                                 </div>
 
+                                ${!isSafe ? `
                                 <div class="recommendation-box ${isCritical ? 'critical' : ''}">
                                     <strong>⚠️ Safety Recommendation:</strong><br>
                                     ${isCritical
-                                    ? `<strong style="color: #ff4444;">CRITICAL ALTITUDE VIOLATION!</strong><br>
+                                        ? `<strong style="color: #ff4444;">CRITICAL ALTITUDE VIOLATION!</strong><br>
                                            • Contact pilot immediately via emergency frequency<br>
                                            • Verify aircraft status and intentions<br>
                                            • Initiate emergency protocols if necessary<br>
                                            • Clear surrounding airspace<br>
-                                           • Alert ground emergency services`
-                                    : `<strong style="color: #ffaa00;">Low Altitude Warning</strong><br>
+                                           • Alert ground emergency services<br>
+                                           • Distance to nearest airport: ${alert.distanceToAirport ? alert.distanceToAirport.toFixed(2) + ' km' : 'Unknown'}`
+                                        : `<strong style="color: #ffaa00;">Low Altitude Warning</strong><br>
                                            • Monitor flight path continuously<br>
                                            • Verify pilot is aware of altitude<br>
                                            • Confirm approach/departure clearance<br>
-                                           • Prepare for potential emergency response`}
+                                           • Prepare for potential emergency response<br>
+                                           • Nearest airport: ${alert.airportName || 'Unknown'} (${alert.distanceToAirport ? alert.distanceToAirport.toFixed(2) + ' km' : 'N/A'})`}
                                 </div>
-
-                                <div style="margin-top: 15px; padding: 10px; background: #e7f3ff; border-radius: 4px; font-size: 0.9em;">
-                                    <strong>📍 Position:</strong> 
-                                    Aircraft is ${alert.onGround ? 'on the ground' : 'in flight'} at 
-                                    ${altitudeFt} feet ${alert.verticalRate > 0 ? '(climbing)' : alert.verticalRate < 0 ? '(descending)' : '(level)'}
+                                ` : `
+                                <div style="margin-top: 15px; padding: 10px; background: #e8f5e9; border-radius: 4px; font-size: 0.9em; color: #2e7d32;">
+                                    <strong>✓ Normal Operations:</strong>
+                                    Aircraft is operating within ${alert.airportName} ${alert.zoneName}. Low altitude is expected and safe.
                                 </div>
+                                `}
                             </div>
                         `}).join('');
+                    }
+
+                    // Display all monitored aircraft
+                    const monitoredContainer = document.getElementById('monitored-aircraft-container');
+                    const monitoredAircraft = result.monitoredAircraft || [];
+
+                    if (monitoredAircraft.length === 0) {
+                        monitoredContainer.innerHTML = '<p style="text-align: center; color: #666;">No aircraft currently being monitored.</p>';
+                    } else {
+                        monitoredContainer.innerHTML = `
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
+                                ${monitoredAircraft.map(aircraft => `
+                                    <div style="background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid ${aircraft.inAirportZone ? '#4caf50' : '#2196f3'};">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                            <h4 style="margin: 0;">✈️ ${aircraft.callsign}</h4>
+                                            <span style="padding: 3px 10px; border-radius: 12px; font-size: 0.8em; background: ${aircraft.inAirportZone ? '#e8f5e9' : '#e3f2fd'}; color: ${aircraft.inAirportZone ? '#2e7d32' : '#1565c0'};">
+                                                ${aircraft.inAirportZone ? '🛬 In Zone' : '✈️ En Route'}
+                                            </span>
+                                        </div>
+                                        <div style="font-size: 0.9em; line-height: 1.8;">
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span style="color: #666;">Altitude:</span>
+                                                <strong style="color: ${aircraft.altitude < 1000 ? '#ff4444' : aircraft.altitude < 3000 ? '#ffaa00' : '#4caf50'};">${Math.round(aircraft.altitude)} ft</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span style="color: #666;">Speed:</span>
+                                                <strong>${Math.round(aircraft.velocity)} kts</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span style="color: #666;">Heading:</span>
+                                                <strong>${Math.round(aircraft.heading)}°</strong>
+                                            </div>
+                                            ${aircraft.inAirportZone ? `
+                                            <div style="margin-top: 10px; padding: 8px; background: #e8f5e9; border-radius: 4px;">
+                                                <div style="font-weight: bold; color: #2e7d32; margin-bottom: 5px;">🛬 ${aircraft.airportName}</div>
+                                                <div style="font-size: 0.85em; color: #555;">
+                                                    Zone: ${aircraft.zoneName}<br>
+                                                    Distance: ${aircraft.distanceToAirport ? aircraft.distanceToAirport.toFixed(2) + ' km' : 'N/A'}
+                                                </div>
+                                            </div>
+                                            ` : aircraft.distanceToAirport ? `
+                                            <div style="margin-top: 10px; padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 0.85em;">
+                                                <div style="color: #666;">Nearest: ${aircraft.airportName || 'Unknown'}</div>
+                                                <div style="color: #666;">Distance: ${aircraft.distanceToAirport.toFixed(2)} km</div>
+                                            </div>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `;
                     }
 
                     updateTimestamp();
@@ -385,6 +482,8 @@
                 console.error('Error loading altitude data:', error);
                 document.getElementById('alerts-container').innerHTML =
                     '<div class="no-alerts" style="color: #ff4444;">❌ Error loading altitude data. Please check server connection.</div>';
+                document.getElementById('monitored-aircraft-container').innerHTML =
+                    '<p style="text-align: center; color: #ff4444;">❌ Error loading aircraft data.</p>';
             }
         }
 
