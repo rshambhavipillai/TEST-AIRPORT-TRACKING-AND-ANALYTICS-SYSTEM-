@@ -143,6 +143,23 @@ async function startServer() {
         // Connect to databases
         await dbManager.connect();
 
+        // Import and start monitoring services
+        const flightMonitorService = require('./src/services/flightMonitorService');
+        const collisionService = require('./src/services/collisionService');
+        const altitudeCheckService = require('./src/services/altitudeCheckService');
+
+        console.log('');
+        console.log('🔄 Starting monitoring services...');
+
+        // Start flight data monitoring
+        flightMonitorService.startMonitoring();
+
+        // Start safety monitoring services
+        collisionService.startMonitoring();
+        altitudeCheckService.startMonitoring();
+
+        console.log('✅ All monitoring services started!');
+
         // Start Express server
         app.listen(PORT, () => {
             console.log('');
@@ -151,6 +168,8 @@ async function startServer() {
             console.log(`🌐 Server: http://localhost:${PORT}`);
             console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
             console.log(`📈 KPIs: http://localhost:${PORT}/kpi`);
+            console.log(`⚠️  Collision: http://localhost:${PORT}/collision`);
+            console.log(`📉 Altitude: http://localhost:${PORT}/altitude`);
             console.log(`🔍 Passenger: http://localhost:${PORT}/passenger`);
             console.log(`📜 History: http://localhost:${PORT}/history`);
             console.log(`🎬 Replay: http://localhost:${PORT}/replay`);

@@ -33,27 +33,42 @@ router.get('/live', async (req, res) => {
 });
 
 /**
- * GET /api/flights/:flightNumber
- * Get specific flight details
+ * GET /api/flights/summary
+ * Get summary statistics
+ * IMPORTANT: Must be before /:flightNumber to avoid route conflict
  */
-router.get('/:flightNumber', async (req, res) => {
+router.get('/summary', async (req, res) => {
     try {
-        const { flightNumber } = req.params;
-        const flight = await flightMonitorService.getFlightDetails(flightNumber);
-
-        if (!flight) {
-            return res.status(404).json({
-                success: false,
-                error: 'Flight not found'
-            });
-        }
+        const summary = await flightMonitorService.getSummary();
 
         res.json({
             success: true,
-            data: flight
+            data: summary
         });
     } catch (error) {
-        console.error('Error in /:flightNumber endpoint:', error);
+        console.error('Error in /summary endpoint:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/flights/gates/status
+ * Get gate occupancy status
+ */
+router.get('/gates/status', async (req, res) => {
+    try {
+        const gates = await flightMonitorService.getGateStatus();
+
+        res.json({
+            success: true,
+            count: gates.length,
+            data: gates
+        });
+    } catch (error) {
+        console.error('Error in /gates/status endpoint:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -86,41 +101,28 @@ router.get('/terminal/:terminalName', async (req, res) => {
 });
 
 /**
- * GET /api/flights/gates/status
- * Get gate occupancy status
+ * GET /api/flights/:flightNumber
+ * Get specific flight details
+ * IMPORTANT: Must be LAST to avoid catching other routes
  */
-router.get('/gates/status', async (req, res) => {
+router.get('/:flightNumber', async (req, res) => {
     try {
-        const gates = await flightMonitorService.getGateStatus();
+        const { flightNumber } = req.params;
+        const flight = await flightMonitorService.getFlightDetails(flightNumber);
+
+        if (!flight) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flight not found'
+            });
+        }
 
         res.json({
             success: true,
-            count: gates.length,
-            data: gates
+            data: flight
         });
     } catch (error) {
-        console.error('Error in /gates/status endpoint:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-/**
- * GET /api/flights/summary
- * Get summary statistics
- */
-router.get('/summary', async (req, res) => {
-    try {
-        const summary = await flightMonitorService.getSummary();
-
-        res.json({
-            success: true,
-            data: summary
-        });
-    } catch (error) {
-        console.error('Error in /summary endpoint:', error);
+        console.error('Error in /:flightNumber endpoint:', error);
         res.status(500).json({
             success: false,
             error: error.message
